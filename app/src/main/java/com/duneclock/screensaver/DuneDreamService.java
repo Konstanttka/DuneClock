@@ -16,43 +16,27 @@ import java.util.Locale;
 import java.util.Random;
 
 public class DuneDreamService extends DreamService {
-    private BouncingClockView clockView;
-
     @Override
     public void onAttachedToWindow() {
         super.onAttachedToWindow();
-        setInteractive(false);
-        setFullscreen(true);
-        clockView = new BouncingClockView(this);
-        setContentView(clockView);
-    }
-
-    @Override
-    public void onDreamingStarted() {
-        super.onDreamingStarted();
-        if (clockView != null) {
-            clockView.startAnimation();
+        try {
+            setInteractive(false);
+            setFullscreen(true);
+            setContentView(new BouncingClockView(this));
+        } catch (Throwable ignored) {
         }
     }
 
-    @Override
-    public void onDreamingStopped() {
-        if (clockView != null) {
-            clockView.stopAnimation();
-        }
-        super.onDreamingStopped();
-    }
-
-    private static class BouncingClockView extends View {
+    public static class BouncingClockView extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final SimpleDateFormat sdf = new SimpleDateFormat("H:mm", Locale.US);
+        private final SimpleDateFormat sdf = new SimpleDateFormat("H:mm", Locale.getDefault());
         private final Rect textBounds = new Rect();
         private final Handler handler = new Handler(Looper.getMainLooper());
         private float x = -1f, y = -1f;
-        private float vx = 2.5f, vy = 2.5f;
+        private float vx = 2.2f, vy = 2.2f;
         private boolean running = false;
 
-        private final Runnable frameRunnable = new Runnable() {
+        private final Runnable ticker = new Runnable() {
             @Override
             public void run() {
                 if (!running) return;
@@ -65,30 +49,26 @@ public class DuneDreamService extends DreamService {
             super(context);
             paint.setColor(Color.parseColor("#B0B0B0"));
             paint.setTextSize(130f);
-            try {
-                paint.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-            } catch (Exception e) {
-                paint.setTypeface(Typeface.DEFAULT);
-            }
+            paint.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL));
         }
 
-        public void startAnimation() {
-            if (!running) {
-                running = true;
-                handler.post(frameRunnable);
-            }
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            running = true;
+            handler.post(ticker);
         }
 
-        public void stopAnimation() {
+        @Override
+        protected void onDetachedFromWindow() {
             running = false;
-            handler.removeCallbacks(frameRunnable);
+            handler.removeCallbacks(ticker);
+            super.onDetachedFromWindow();
         }
 
         @Override
         protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
             canvas.drawColor(Color.BLACK);
-
             int w = getWidth();
             int h = getHeight();
             if (w <= 0 || h <= 0) return;
