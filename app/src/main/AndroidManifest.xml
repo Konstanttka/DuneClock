@@ -1,6 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:label="Dune Clock">
+    <application
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:label="Dune Clock"
+        android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+        <activity
+            android:name=".PreviewActivity"
+            android:exported="true"
+            android:label="Dune Clock">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
         <service
             android:name=".DuneDreamService"
             android:exported="true"
