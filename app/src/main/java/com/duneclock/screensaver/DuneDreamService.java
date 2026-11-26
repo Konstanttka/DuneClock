@@ -17,11 +17,11 @@ public class DuneDreamService extends DreamService {
     @Override
     public void onAttachedToWindow() {
         super.onAttachedToWindow();
+        setInteractive(false);
+        setFullscreen(true);
         try {
-            setInteractive(false);
-            setFullscreen(true);
             setContentView(new BouncingClockView(this));
-        } catch (Throwable ignored) {
+        } catch (Exception ignored) {
         }
     }
 
@@ -29,18 +29,14 @@ public class DuneDreamService extends DreamService {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final SimpleDateFormat sdf = new SimpleDateFormat("H:mm", Locale.getDefault());
         private final Rect textBounds = new Rect();
-        private float x = -1f, y = -1f;
-        private float vx = 0.73f, vy = 0.73f;
+        private float x = -1, y = -1;
+        private float vx = 0.88f, vy = 0.88f;
 
         public BouncingClockView(Context context) {
             super(context);
             paint.setColor(Color.parseColor("#969696"));
             paint.setTextSize(325f);
-            try {
-                paint.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-            } catch (Throwable e) {
-                paint.setTypeface(Typeface.DEFAULT);
-            }
+            paint.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         }
 
         @Override
@@ -50,7 +46,7 @@ public class DuneDreamService extends DreamService {
                 int w = getWidth();
                 int h = getHeight();
                 if (w <= 0 || h <= 0) {
-                    postInvalidateDelayed(32);
+                    postInvalidateDelayed(50);
                     return;
                 }
 
@@ -60,7 +56,7 @@ public class DuneDreamService extends DreamService {
                 float textWidth = paint.measureText(time);
                 float textHeight = textBounds.height();
 
-                if (x < 0f || y < 0f) {
+                if (x < 0 || y < 0) {
                     Random r = new Random();
                     int maxX = Math.max(1, (int) (w - textWidth));
                     int maxY = Math.max(1, (int) (h - textHeight));
@@ -71,15 +67,15 @@ public class DuneDreamService extends DreamService {
                 x += vx;
                 y += vy;
 
-                if (x <= 0f) {
-                    x = 0f;
+                if (x <= 0) {
+                    x = 0;
                     vx = Math.abs(vx);
                 } else if (x + textWidth >= w) {
-                    x = Math.max(0f, w - textWidth);
+                    x = Math.max(0, w - textWidth);
                     vx = -Math.abs(vx);
                 }
 
-                if (y - textHeight <= 0f) {
+                if (y - textHeight <= 0) {
                     y = textHeight;
                     vy = Math.abs(vy);
                 } else if (y >= h) {
@@ -88,7 +84,7 @@ public class DuneDreamService extends DreamService {
                 }
 
                 canvas.drawText(time, x, y, paint);
-            } catch (Throwable ignored) {
+            } catch (Exception ignored) {
             }
             postInvalidateDelayed(16);
         }
