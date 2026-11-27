@@ -83,10 +83,12 @@ public class PreviewActivity extends Activity {
                 if (trackWidth <= 0) return;
 
                 float tickX = padLeft + trackWidth * defaultRatio;
-                tickPaint.setColor(Color.parseColor("#B0BEC5"));
+                tickPaint.setColor(Color.parseColor("#FFFFFF"));
                 tickPaint.setStrokeWidth(4f);
 
-                canvas.drawLine(tickX, getHeight() - 14f, tickX, getHeight(), tickPaint);
+                float h = getHeight();
+                canvas.drawLine(tickX, 2f, tickX, 14f, tickPaint);
+                canvas.drawLine(tickX, h - 14f, tickX, h - 2f, tickPaint);
             }
         };
 
@@ -101,7 +103,8 @@ public class PreviewActivity extends Activity {
                 FrameLayout.LayoutParams.WRAP_CONTENT
         );
         seekLp.gravity = Gravity.CENTER_VERTICAL;
-        seekLp.bottomMargin = 6;
+        seekLp.topMargin = 8;
+        seekLp.bottomMargin = 8;
         wrapper.addView(seekBar, seekLp);
 
         return wrapper;
@@ -126,6 +129,7 @@ public class PreviewActivity extends Activity {
 
         final SharedPreferences prefs = getSharedPreferences(DuneDreamService.PREFS_NAME, MODE_PRIVATE);
 
+        // 1. Размер шрифта (+-50%)
         final int minSize = Math.round(DuneDreamService.DEFAULT_FONT_SIZE * 0.50f);
         final int maxSize = Math.round(DuneDreamService.DEFAULT_FONT_SIZE * 1.50f);
         final int defaultSizeProgress = DuneDreamService.DEFAULT_FONT_SIZE - minSize;
@@ -136,6 +140,7 @@ public class PreviewActivity extends Activity {
         if (savedSize < minSize) savedSize = minSize;
         if (savedSize > maxSize) savedSize = maxSize;
 
+        // 2. Скорость движения (+-50%)
         final float minSpeed = DuneDreamService.DEFAULT_SPEED * 0.50f;
         final float maxSpeed = DuneDreamService.DEFAULT_SPEED * 1.50f;
         final int defaultSpeedProgress = 50;
@@ -145,6 +150,7 @@ public class PreviewActivity extends Activity {
         if (savedSpeed < minSpeed) savedSpeed = minSpeed;
         if (savedSpeed > maxSpeed) savedSpeed = maxSpeed;
 
+        // 3. Яркость цифр
         final int minBright = 40;
         final int maxBright = 255;
         final int defaultBrightProgress = DuneDreamService.DEFAULT_BRIGHTNESS - minBright;
@@ -185,7 +191,7 @@ public class PreviewActivity extends Activity {
         cardBg.setCornerRadius(16);
         card.setBackground(cardBg);
 
-        // 1. Размер шрифта (+-50%)
+        // --- Полоска 1: Размер шрифта ---
         final TextView sizeLabel = new TextView(this);
         sizeLabel.setTextColor(Color.parseColor("#E0E0E0"));
         sizeLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
@@ -228,7 +234,7 @@ public class PreviewActivity extends Activity {
         float sizeCenterRatio = (float) defaultSizeProgress / (float) maxSizeProgress;
         card.addView(createControlRow(sizeMinus, wrapSeekBarWithCenterMark(sizeSeek, sizeCenterRatio), sizePlus), createRowParams(20));
 
-        // 2. Скорость движения (+-50%)
+        // --- Полоска 2: Скорость движения ---
         final TextView speedLabel = new TextView(this);
         speedLabel.setTextColor(Color.parseColor("#E0E0E0"));
         speedLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
@@ -272,7 +278,7 @@ public class PreviewActivity extends Activity {
 
         card.addView(createControlRow(speedMinus, wrapSeekBarWithCenterMark(speedSeek, 0.50f), speedPlus), createRowParams(20));
 
-        // 3. Яркость цифр
+        // --- Полоска 3: Яркость цифр ---
         final TextView brightLabel = new TextView(this);
         brightLabel.setTextColor(Color.parseColor("#E0E0E0"));
         brightLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
@@ -322,17 +328,18 @@ public class PreviewActivity extends Activity {
         cardParams.bottomMargin = 24;
         root.addView(card, cardParams);
 
+        // --- Нижний ряд кнопок: Сброс и Тест скринсейвера ---
         LinearLayout bottomRow = new LinearLayout(this);
         bottomRow.setOrientation(LinearLayout.HORIZONTAL);
         bottomRow.setGravity(Gravity.CENTER);
 
         final Button resetBtn = new Button(this);
         resetBtn.setId(View.generateViewId());
-        resetBtn.setText("Сбросить");
+        resetBtn.setText("Сброс");
         resetBtn.setTextColor(Color.WHITE);
         resetBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
         resetBtn.setTypeface(Typeface.DEFAULT_BOLD);
-        resetBtn.setPadding(40, 18, 40, 18);
+        resetBtn.setPadding(44, 18, 44, 18);
         resetBtn.setFocusable(true);
         resetBtn.setFocusableInTouchMode(false);
         resetBtn.setBackground(createFocusButtonBg(
@@ -385,6 +392,7 @@ public class PreviewActivity extends Activity {
 
         root.addView(bottomRow);
 
+        // --- Навигация фокуса стрелками пульта Zidoo ---
         sizeMinus.setNextFocusRightId(sizePlus.getId());
         sizeMinus.setNextFocusDownId(speedMinus.getId());
         sizePlus.setNextFocusLeftId(sizeMinus.getId());
