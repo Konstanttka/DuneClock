@@ -5,12 +5,15 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
-import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -18,288 +21,353 @@ import android.widget.TextView;
 
 public class PreviewActivity extends Activity {
     private boolean isTesting = false;
-    private SharedPreferences prefs;
+    private DuneDreamService.BouncingClockView testView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        prefs = getSharedPreferences(DuneDreamService.PREFS_NAME, MODE_PRIVATE);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         showSettingsScreen();
+    }
+
+    private StateListDrawable createFocusButtonBg(int normalColor, int focusedColor, int radiusPx) {
+        GradientDrawable focused = new GradientDrawable();
+        focused.setColor(focusedColor);
+        focused.setCornerRadius(radiusPx);
+        focused.setStroke(4, Color.WHITE);
+
+        GradientDrawable normal = new GradientDrawable();
+        normal.setColor(normalColor);
+        normal.setCornerRadius(radiusPx);
+        normal.setStroke(2, Color.parseColor("#555555"));
+
+        StateListDrawable states = new StateListDrawable();
+        states.addState(new int[]{android.R.attr.state_focused}, focused);
+        states.addState(new int[]{android.R.attr.state_pressed}, focused);
+        states.addState(new int[]{}, normal);
+        return states;
+    }
+
+    private Button createStepButton(String symbol) {
+        Button btn = new Button(this);
+        btn.setText(symbol);
+        btn.setTextColor(Color.WHITE);
+        btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        btn.setTypeface(Typeface.DEFAULT_BOLD);
+        btn.setFocusable(true);
+        btn.setFocusableInTouchMode(false);
+        btn.setPadding(0, 0, 0, 0);
+        btn.setBackground(createFocusButtonBg(
+                Color.parseColor("#2E2E2E"),
+                Color.parseColor("#1E88E5"),
+                12
+        ));
+        return btn;
     }
 
     private void showSettingsScreen() {
         isTesting = false;
+        if (testView != null) {
+            testView.stopAnimationLoop();
+            testView = null;
+        }
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(Color.parseColor("#121212"));
-        scroll.setFillViewport(true);
+        final SharedPreferences prefs = getSharedPreferences(DuneDreamService.PREFS_NAME, MODE_PRIVATE);
+
+        final int minSize = Math.round(DuneDreamService.DEFAULT_FONT_SIZE * 0.50f);
+        final int maxSize = Math.round(DuneDreamService.DEFAULT_FONT_SIZE * 1.50f);
+        final int stepSize = 16;
+        int savedSize = prefs.getInt(DuneDreamService.KEY_FONT_SIZE, DuneDreamService.DEFAULT_FONT_SIZE);
+        if (savedSize < minSize) savedSize = minSize;
+        if (savedSize > maxSize) savedSize = maxSize;
+
+        final float minSpeed = DuneDreamService.DEFAULT_SPEED * 0.50f;
+        final float maxSpeed = DuneDreamService.DEFAULT_SPEED * 1.50f;
+        final float stepSpeed = 0.044f;
+        float savedSpeed = prefs.getFloat(DuneDreamService.KEY_SPEED, DuneDreamService.DEFAULT_SPEED);
+        if (savedSpeed < minSpeed) savedSpeed = minSpeed;
+        if (savedSpeed > maxSpeed) savedSpeed = maxSpeed;
+
+        final int minBright = 40;
+        final int maxBright = 255;
+        final int stepBright = 15;
+        int savedBright = prefs.getInt(DuneDreamService.KEY_BRIGHTNESS, DuneDreamService.DEFAULT_BRIGHTNESS);
+        if (savedBright < minBright) savedBright = minBright;
+        if (savedBright > maxBright) savedBright = maxBright;
+
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setBackgroundColor(Color.parseColor("#121212"));
+        scrollView.setFillViewport(true);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(80, 45, 80, 45);
+        root.setPadding(60, 36, 60, 36);
 
         TextView title = new TextView(this);
         title.setText("Параметры");
         title.setTextColor(Color.WHITE);
-        title.setTextSize(32f);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 28);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setGravity(Gravity.CENTER);
-        title.setPadding(0, 0, 0, 35);
-        root.addView(title);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        titleParams.bottomMargin = 28;
+        root.addView(title, titleParams);
 
-        // 1. Размер шрифта: от -50% (163) до +50% (488), база 325, шаг 16 (~5%)
-        int savedSize = prefs.getInt(DuneDreamService.KEY_FONT_SIZE, DuneDreamService.DEFAULT_FONT_SIZE);
-        final int minSize = 163;
-        final int maxSize = 488;
-        final int stepSize = 16;
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(36, 28, 36, 28);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(Color.parseColor("#1E1E1E"));
+        cardBg.setCornerRadius(16);
+        card.setBackground(cardBg);
 
-        final TextView sizeLabel = createLabel(root, formatSizeText(savedSize));
+        // 1. Размер шрифта (+-50%)
+        final TextView sizeLabel = new TextView(this);
+        sizeLabel.setTextColor(Color.parseColor("#E0E0E0"));
+        sizeLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        updateSizeLabel(sizeLabel, savedSize);
+        card.addView(sizeLabel);
+
         final SeekBar sizeSeek = new SeekBar(this);
         sizeSeek.setMax(maxSize - minSize);
-        sizeSeek.setProgress(clamp(savedSize - minSize, 0, maxSize - minSize));
+        sizeSeek.setProgress(savedSize - minSize);
         sizeSeek.setFocusable(false);
-
-        addControlRow(root, sizeSeek, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                int next = clamp(sizeSeek.getProgress() - stepSize, 0, maxSize - minSize);
-                sizeSeek.setProgress(next);
-            }
-        }, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                int next = clamp(sizeSeek.getProgress() + stepSize, 0, maxSize - minSize);
-                sizeSeek.setProgress(next);
-            }
-        });
-
         sizeSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 int val = minSize + progress;
-                sizeLabel.setText(formatSizeText(val));
+                updateSizeLabel(sizeLabel, val);
                 prefs.edit().putInt(DuneDreamService.KEY_FONT_SIZE, val).apply();
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        // 2. Скорость движения: от -50% (0.44) до +50% (1.32), база 0.88, шаг 0.04 (~5%)
-        float savedSpeed = prefs.getFloat(DuneDreamService.KEY_SPEED, DuneDreamService.DEFAULT_SPEED);
-        final int minSpeedInt = 44;
-        final int maxSpeedInt = 132;
-        final int stepSpeedInt = 4;
-
-        final TextView speedLabel = createLabel(root, formatSpeedText(savedSpeed));
-        final SeekBar speedSeek = new SeekBar(this);
-        speedSeek.setMax(maxSpeedInt - minSpeedInt);
-        speedSeek.setProgress(clamp(Math.round(savedSpeed * 100f) - minSpeedInt, 0, maxSpeedInt - minSpeedInt));
-        speedSeek.setFocusable(false);
-
-        addControlRow(root, speedSeek, new View.OnClickListener() {
+        Button sizeMinus = createStepButton("−");
+        sizeMinus.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                int next = clamp(speedSeek.getProgress() - stepSpeedInt, 0, maxSpeedInt - minSpeedInt);
-                speedSeek.setProgress(next);
-            }
-        }, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                int next = clamp(speedSeek.getProgress() + stepSpeedInt, 0, maxSpeedInt - minSpeedInt);
-                speedSeek.setProgress(next);
+                int next = Math.max(0, sizeSeek.getProgress() - stepSize);
+                sizeSeek.setProgress(next);
             }
         });
 
+        Button sizePlus = createStepButton("+");
+        sizePlus.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                int next = Math.min(sizeSeek.getMax(), sizeSeek.getProgress() + stepSize);
+                sizeSeek.setProgress(next);
+            }
+        });
+
+        card.addView(createControlRow(sizeMinus, sizeSeek, sizePlus), createRowParams(24));
+
+        // 2. Скорость движения (+-50%)
+        final TextView speedLabel = new TextView(this);
+        speedLabel.setTextColor(Color.parseColor("#E0E0E0"));
+        speedLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        updateSpeedLabel(speedLabel, savedSpeed);
+        card.addView(speedLabel);
+
+        final SeekBar speedSeek = new SeekBar(this);
+        speedSeek.setMax(100);
+        speedSeek.setProgress(Math.round(((savedSpeed - minSpeed) / (maxSpeed - minSpeed)) * 100f));
+        speedSeek.setFocusable(false);
         speedSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                float val = (minSpeedInt + progress) / 100f;
-                speedLabel.setText(formatSpeedText(val));
+                float val = minSpeed + ((maxSpeed - minSpeed) * progress / 100f);
+                updateSpeedLabel(speedLabel, val);
                 prefs.edit().putFloat(DuneDreamService.KEY_SPEED, val).apply();
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        // 3. Яркость цифр: от 60 (24%) до 255 (100%), база 150 (59%), шаг 10 (~5%)
-        int savedBright = prefs.getInt(DuneDreamService.KEY_BRIGHTNESS, DuneDreamService.DEFAULT_BRIGHTNESS);
-        final int minBright = 60;
-        final int maxBright = 255;
-        final int stepBright = 10;
-
-        final TextView brightLabel = createLabel(root, formatBrightText(savedBright));
-        final SeekBar brightSeek = new SeekBar(this);
-        brightSeek.setMax(maxBright - minBright);
-        brightSeek.setProgress(clamp(savedBright - minBright, 0, maxBright - minBright));
-        brightSeek.setFocusable(false);
-
-        addControlRow(root, brightSeek, new View.OnClickListener() {
+        Button speedMinus = createStepButton("−");
+        speedMinus.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                int next = clamp(brightSeek.getProgress() - stepBright, 0, maxBright - minBright);
-                brightSeek.setProgress(next);
-            }
-        }, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                int next = clamp(brightSeek.getProgress() + stepBright, 0, maxBright - minBright);
-                brightSeek.setProgress(next);
+                int stepPct = Math.max(1, Math.round((stepSpeed / (maxSpeed - minSpeed)) * 100f));
+                int next = Math.max(0, speedSeek.getProgress() - stepPct);
+                speedSeek.setProgress(next);
             }
         });
 
+        Button speedPlus = createStepButton("+");
+        speedPlus.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                int stepPct = Math.max(1, Math.round((stepSpeed / (maxSpeed - minSpeed)) * 100f));
+                int next = Math.min(100, speedSeek.getProgress() + stepPct);
+                speedSeek.setProgress(next);
+            }
+        });
+
+        card.addView(createControlRow(speedMinus, speedSeek, speedPlus), createRowParams(24));
+
+        // 3. Яркость цифр
+        final TextView brightLabel = new TextView(this);
+        brightLabel.setTextColor(Color.parseColor("#E0E0E0"));
+        brightLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        updateBrightLabel(brightLabel, savedBright);
+        card.addView(brightLabel);
+
+        final SeekBar brightSeek = new SeekBar(this);
+        brightSeek.setMax(maxBright - minBright);
+        brightSeek.setProgress(savedBright - minBright);
+        brightSeek.setFocusable(false);
         brightSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 int val = minBright + progress;
-                brightLabel.setText(formatBrightText(val));
+                updateBrightLabel(brightLabel, val);
                 prefs.edit().putInt(DuneDreamService.KEY_BRIGHTNESS, val).apply();
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        // Кнопка "Тест скринсейвера"
-        final Button testBtn = createStyledButton("Тест скринсейвера", 22f, Color.parseColor("#2B6CB0"), Color.parseColor("#3B82F6"));
-        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+        Button brightMinus = createStepButton("−");
+        brightMinus.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                int next = Math.max(0, brightSeek.getProgress() - stepBright);
+                brightSeek.setProgress(next);
+            }
+        });
+
+        Button brightPlus = createStepButton("+");
+        brightPlus.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                int next = Math.min(brightSeek.getMax(), brightSeek.getProgress() + stepBright);
+                brightSeek.setProgress(next);
+            }
+        });
+
+        card.addView(createControlRow(brightMinus, brightSeek, brightPlus), createRowParams(8));
+
+        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
+                900,
+                LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        btnParams.topMargin = 35;
-        testBtn.setPadding(60, 22, 60, 22);
-        testBtn.setLayoutParams(btnParams);
+        cardParams.bottomMargin = 28;
+        root.addView(card, cardParams);
+
+        final Button testBtn = new Button(this);
+        testBtn.setText("Тест скринсейвера");
+        testBtn.setTextColor(Color.WHITE);
+        testBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        testBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        testBtn.setPadding(48, 18, 48, 18);
+        testBtn.setFocusable(true);
+        testBtn.setFocusableInTouchMode(false);
+        testBtn.setBackground(createFocusButtonBg(
+                Color.parseColor("#2A2A2A"),
+                Color.parseColor("#1E88E5"),
+                14
+        ));
+
         testBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                startPreview();
+                startScreensaverTest();
             }
         });
-        root.addView(testBtn);
 
-        scroll.addView(root);
-        setContentView(scroll);
+        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        root.addView(testBtn, btnParams);
+
+        scrollView.addView(root);
+        setContentView(scrollView);
         testBtn.requestFocus();
     }
 
-    private void addControlRow(LinearLayout parent, SeekBar seekBar, View.OnClickListener onMinus, View.OnClickListener onPlus) {
+    private LinearLayout.LayoutParams createRowParams(int bottomMargin) {
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        rowParams.topMargin = 10;
+        rowParams.bottomMargin = bottomMargin;
+        return rowParams;
+    }
+
+    private LinearLayout createControlRow(Button minusBtn, SeekBar seekBar, Button plusBtn) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        rowParams.bottomMargin = 28;
-        row.setLayoutParams(rowParams);
 
-        Button minusBtn = createStyledButton("−", 26f, Color.parseColor("#262626"), Color.parseColor("#3B82F6"));
-        LinearLayout.LayoutParams sideBtnParams = new LinearLayout.LayoutParams(86, 68);
-        minusBtn.setLayoutParams(sideBtnParams);
-        minusBtn.setOnClickListener(onMinus);
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(68, 56);
+        row.addView(minusBtn, btnLp);
 
-        LinearLayout.LayoutParams seekParams = new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams seekLp = new LinearLayout.LayoutParams(
                 0,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
                 1.0f
         );
-        seekParams.leftMargin = 20;
-        seekParams.rightMargin = 20;
-        seekBar.setLayoutParams(seekParams);
+        seekLp.leftMargin = 16;
+        seekLp.rightMargin = 16;
+        row.addView(seekBar, seekLp);
 
-        Button plusBtn = createStyledButton("+", 26f, Color.parseColor("#262626"), Color.parseColor("#3B82F6"));
-        LinearLayout.LayoutParams plusBtnParams = new LinearLayout.LayoutParams(86, 68);
-        plusBtn.setLayoutParams(plusBtnParams);
-        plusBtn.setOnClickListener(onPlus);
-
-        row.addView(minusBtn);
-        row.addView(seekBar);
-        row.addView(plusBtn);
-        parent.addView(row);
+        row.addView(plusBtn, btnLp);
+        return row;
     }
 
-    private Button createStyledButton(String text, float textSize, final int normalColor, final int focusColor) {
-        final Button btn = new Button(this);
-        btn.setText(text);
-        btn.setTextColor(Color.WHITE);
-        btn.setTextSize(textSize);
-        btn.setTypeface(Typeface.DEFAULT_BOLD);
-        btn.setFocusable(true);
-        btn.setFocusableInTouchMode(false);
-        btn.setPadding(0, 0, 0, 0);
-
-        final GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(12f);
-        bg.setColor(normalColor);
-        bg.setStroke(3, Color.parseColor("#404040"));
-        btn.setBackground(bg);
-
-        btn.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            @Override
-            public void onFocusChange(View v, boolean hasFocus) {
-                if (hasFocus) {
-                    bg.setColor(focusColor);
-                    bg.setStroke(4, Color.WHITE);
-                } else {
-                    bg.setColor(normalColor);
-                    bg.setStroke(3, Color.parseColor("#404040"));
-                }
-            }
-        });
-        return btn;
-    }
-
-    private TextView createLabel(LinearLayout parent, String text) {
-        TextView tv = new TextView(this);
-        tv.setText(text);
-        tv.setTextColor(Color.parseColor("#E0E0E0"));
-        tv.setTextSize(21f);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        lp.bottomMargin = 10;
-        tv.setLayoutParams(lp);
-        parent.addView(tv);
-        return tv;
-    }
-
-    private String formatSizeText(int val) {
+    private void updateSizeLabel(TextView label, int val) {
         int pct = Math.round(((val - DuneDreamService.DEFAULT_FONT_SIZE) * 100f) / DuneDreamService.DEFAULT_FONT_SIZE);
         String sign = pct > 0 ? "+" : "";
-        return "Размер шрифта: " + val + " (" + sign + pct + "%)";
+        label.setText("Размер шрифта: " + val + " (" + sign + pct + "%)");
     }
 
-    private String formatSpeedText(float val) {
+    private void updateSpeedLabel(TextView label, float val) {
         int pct = Math.round(((val - DuneDreamService.DEFAULT_SPEED) * 100f) / DuneDreamService.DEFAULT_SPEED);
         String sign = pct > 0 ? "+" : "";
-        return String.format(java.util.Locale.US, "Скорость движения: %.2f (%s%d%%)", val, sign, pct);
+        label.setText(String.format(java.util.Locale.US, "Скорость движения: %.2f (%s%d%%)", val, sign, pct));
     }
 
-    private String formatBrightText(int val) {
+    private void updateBrightLabel(TextView label, int val) {
         int pct = Math.round((val * 100f) / 255f);
-        return "Яркость цифр: " + pct + "%";
+        label.setText("Яркость цифр: " + pct + "%");
     }
 
-    private int clamp(int val, int min, int max) {
-        return Math.max(min, Math.min(max, val));
-    }
-
-    private void startPreview() {
+    private void startScreensaverTest() {
         isTesting = true;
-        DuneDreamService.BouncingClockView view = new DuneDreamService.BouncingClockView(this);
-        view.setOnClickListener(new View.OnClickListener() {
+        FrameLayout container = new FrameLayout(this);
+        container.setBackgroundColor(Color.BLACK);
+
+        testView = new DuneDreamService.BouncingClockView(this);
+        testView.setKeepScreenOn(true);
+        testView.setFocusable(true);
+        testView.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 showSettingsScreen();
             }
         });
-        setContentView(view);
-        view.startAnimationLoop();
+
+        container.addView(testView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
+
+        setContentView(container);
+        testView.requestFocus();
+        testView.startAnimationLoop();
     }
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (isTesting && (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
+        if (isTesting) {
             showSettingsScreen();
             return true;
         }
@@ -312,6 +380,14 @@ public class PreviewActivity extends Activity {
             showSettingsScreen();
         } else {
             super.onBackPressed();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (testView != null) {
+            testView.stopAnimationLoop();
         }
     }
 }
