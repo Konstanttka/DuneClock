@@ -2,7 +2,9 @@ package com.duneclock.screensaver;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
@@ -50,6 +52,7 @@ public class PreviewActivity extends Activity {
 
     private Button createStepButton(String symbol) {
         Button btn = new Button(this);
+        btn.setId(View.generateViewId());
         btn.setText(symbol);
         btn.setTextColor(Color.WHITE);
         btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
@@ -65,6 +68,55 @@ public class PreviewActivity extends Activity {
         return btn;
     }
 
+    private FrameLayout wrapSeekBarWithCenterMark(final SeekBar seekBar, final float defaultRatio) {
+        FrameLayout wrapper = new FrameLayout(this);
+
+        View tickView = new View(this) {
+            private final Paint tickPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+            @Override
+            protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                int padLeft = seekBar.getPaddingLeft();
+                int padRight = seekBar.getPaddingRight();
+                int trackWidth = getWidth() - padLeft - padRight;
+                if (trackWidth <= 0) return;
+
+                float tickX = padLeft + trackWidth * defaultRatio;
+                tickPaint.setColor(Color.parseColor("#B0BEC5"));
+                tickPaint.setStrokeWidth(4f);
+
+                canvas.drawLine(tickX, getHeight() - 14f, tickX, getHeight(), tickPaint);
+            }
+        };
+
+        FrameLayout.LayoutParams tickLp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        );
+        wrapper.addView(tickView, tickLp);
+
+        FrameLayout.LayoutParams seekLp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+        );
+        seekLp.gravity = Gravity.CENTER_VERTICAL;
+        seekLp.bottomMargin = 6;
+        wrapper.addView(seekBar, seekLp);
+
+        return wrapper;
+    }
+
+    private int stepWithCenterSnap(int current, int delta, int min, int max, int center) {
+        int next = current + delta;
+        if (next < min) next = min;
+        if (next > max) next = max;
+        if ((current < center && next > center) || (current > center && next < center)) {
+            return center;
+        }
+        return next;
+    }
+
     private void showSettingsScreen() {
         isTesting = false;
         if (testView != null) {
@@ -76,21 +128,29 @@ public class PreviewActivity extends Activity {
 
         final int minSize = Math.round(DuneDreamService.DEFAULT_FONT_SIZE * 0.50f);
         final int maxSize = Math.round(DuneDreamService.DEFAULT_FONT_SIZE * 1.50f);
+        final int defaultSizeProgress = DuneDreamService.DEFAULT_FONT_SIZE - minSize;
+        final int maxSizeProgress = maxSize - minSize;
         final int stepSize = 16;
+
         int savedSize = prefs.getInt(DuneDreamService.KEY_FONT_SIZE, DuneDreamService.DEFAULT_FONT_SIZE);
         if (savedSize < minSize) savedSize = minSize;
         if (savedSize > maxSize) savedSize = maxSize;
 
         final float minSpeed = DuneDreamService.DEFAULT_SPEED * 0.50f;
         final float maxSpeed = DuneDreamService.DEFAULT_SPEED * 1.50f;
-        final float stepSpeed = 0.044f;
+        final int defaultSpeedProgress = 50;
+        final int stepSpeedPct = 5;
+
         float savedSpeed = prefs.getFloat(DuneDreamService.KEY_SPEED, DuneDreamService.DEFAULT_SPEED);
         if (savedSpeed < minSpeed) savedSpeed = minSpeed;
         if (savedSpeed > maxSpeed) savedSpeed = maxSpeed;
 
         final int minBright = 40;
         final int maxBright = 255;
+        final int defaultBrightProgress = DuneDreamService.DEFAULT_BRIGHTNESS - minBright;
+        final int maxBrightProgress = maxBright - minBright;
         final int stepBright = 15;
+
         int savedBright = prefs.getInt(DuneDreamService.KEY_BRIGHTNESS, DuneDreamService.DEFAULT_BRIGHTNESS);
         if (savedBright < minBright) savedBright = minBright;
         if (savedBright > maxBright) savedBright = maxBright;
@@ -102,7 +162,7 @@ public class PreviewActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(60, 36, 60, 36);
+        root.setPadding(60, 32, 60, 32);
 
         TextView title = new TextView(this);
         title.setText("Параметры");
@@ -114,12 +174,12 @@ public class PreviewActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        titleParams.bottomMargin = 28;
+        titleParams.bottomMargin = 24;
         root.addView(title, titleParams);
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(36, 28, 36, 28);
+        card.setPadding(36, 26, 36, 26);
         GradientDrawable cardBg = new GradientDrawable();
         cardBg.setColor(Color.parseColor("#1E1E1E"));
         cardBg.setCornerRadius(16);
@@ -133,7 +193,7 @@ public class PreviewActivity extends Activity {
         card.addView(sizeLabel);
 
         final SeekBar sizeSeek = new SeekBar(this);
-        sizeSeek.setMax(maxSize - minSize);
+        sizeSeek.setMax(maxSizeProgress);
         sizeSeek.setProgress(savedSize - minSize);
         sizeSeek.setFocusable(false);
         sizeSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -147,25 +207,26 @@ public class PreviewActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        Button sizeMinus = createStepButton("−");
+        final Button sizeMinus = createStepButton("−");
         sizeMinus.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                int next = Math.max(0, sizeSeek.getProgress() - stepSize);
+                int next = stepWithCenterSnap(sizeSeek.getProgress(), -stepSize, 0, maxSizeProgress, defaultSizeProgress);
                 sizeSeek.setProgress(next);
             }
         });
 
-        Button sizePlus = createStepButton("+");
+        final Button sizePlus = createStepButton("+");
         sizePlus.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                int next = Math.min(sizeSeek.getMax(), sizeSeek.getProgress() + stepSize);
+                int next = stepWithCenterSnap(sizeSeek.getProgress(), stepSize, 0, maxSizeProgress, defaultSizeProgress);
                 sizeSeek.setProgress(next);
             }
         });
 
-        card.addView(createControlRow(sizeMinus, sizeSeek, sizePlus), createRowParams(24));
+        float sizeCenterRatio = (float) defaultSizeProgress / (float) maxSizeProgress;
+        card.addView(createControlRow(sizeMinus, wrapSeekBarWithCenterMark(sizeSeek, sizeCenterRatio), sizePlus), createRowParams(20));
 
         // 2. Скорость движения (+-50%)
         final TextView speedLabel = new TextView(this);
@@ -181,7 +242,9 @@ public class PreviewActivity extends Activity {
         speedSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                float val = minSpeed + ((maxSpeed - minSpeed) * progress / 100f);
+                float val = (progress == defaultSpeedProgress)
+                        ? DuneDreamService.DEFAULT_SPEED
+                        : minSpeed + ((maxSpeed - minSpeed) * progress / 100f);
                 updateSpeedLabel(speedLabel, val);
                 prefs.edit().putFloat(DuneDreamService.KEY_SPEED, val).apply();
             }
@@ -189,27 +252,25 @@ public class PreviewActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        Button speedMinus = createStepButton("−");
+        final Button speedMinus = createStepButton("−");
         speedMinus.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                int stepPct = Math.max(1, Math.round((stepSpeed / (maxSpeed - minSpeed)) * 100f));
-                int next = Math.max(0, speedSeek.getProgress() - stepPct);
+                int next = stepWithCenterSnap(speedSeek.getProgress(), -stepSpeedPct, 0, 100, defaultSpeedProgress);
                 speedSeek.setProgress(next);
             }
         });
 
-        Button speedPlus = createStepButton("+");
+        final Button speedPlus = createStepButton("+");
         speedPlus.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                int stepPct = Math.max(1, Math.round((stepSpeed / (maxSpeed - minSpeed)) * 100f));
-                int next = Math.min(100, speedSeek.getProgress() + stepPct);
+                int next = stepWithCenterSnap(speedSeek.getProgress(), stepSpeedPct, 0, 100, defaultSpeedProgress);
                 speedSeek.setProgress(next);
             }
         });
 
-        card.addView(createControlRow(speedMinus, speedSeek, speedPlus), createRowParams(24));
+        card.addView(createControlRow(speedMinus, wrapSeekBarWithCenterMark(speedSeek, 0.50f), speedPlus), createRowParams(20));
 
         // 3. Яркость цифр
         final TextView brightLabel = new TextView(this);
@@ -219,7 +280,7 @@ public class PreviewActivity extends Activity {
         card.addView(brightLabel);
 
         final SeekBar brightSeek = new SeekBar(this);
-        brightSeek.setMax(maxBright - minBright);
+        brightSeek.setMax(maxBrightProgress);
         brightSeek.setProgress(savedBright - minBright);
         brightSeek.setFocusable(false);
         brightSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -233,34 +294,63 @@ public class PreviewActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        Button brightMinus = createStepButton("−");
+        final Button brightMinus = createStepButton("−");
         brightMinus.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                int next = Math.max(0, brightSeek.getProgress() - stepBright);
+                int next = stepWithCenterSnap(brightSeek.getProgress(), -stepBright, 0, maxBrightProgress, defaultBrightProgress);
                 brightSeek.setProgress(next);
             }
         });
 
-        Button brightPlus = createStepButton("+");
+        final Button brightPlus = createStepButton("+");
         brightPlus.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                int next = Math.min(brightSeek.getMax(), brightSeek.getProgress() + stepBright);
+                int next = stepWithCenterSnap(brightSeek.getProgress(), stepBright, 0, maxBrightProgress, defaultBrightProgress);
                 brightSeek.setProgress(next);
             }
         });
 
-        card.addView(createControlRow(brightMinus, brightSeek, brightPlus), createRowParams(8));
+        float brightCenterRatio = (float) defaultBrightProgress / (float) maxBrightProgress;
+        card.addView(createControlRow(brightMinus, wrapSeekBarWithCenterMark(brightSeek, brightCenterRatio), brightPlus), createRowParams(6));
 
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
                 900,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        cardParams.bottomMargin = 28;
+        cardParams.bottomMargin = 24;
         root.addView(card, cardParams);
 
+        LinearLayout bottomRow = new LinearLayout(this);
+        bottomRow.setOrientation(LinearLayout.HORIZONTAL);
+        bottomRow.setGravity(Gravity.CENTER);
+
+        final Button resetBtn = new Button(this);
+        resetBtn.setId(View.generateViewId());
+        resetBtn.setText("Сбросить");
+        resetBtn.setTextColor(Color.WHITE);
+        resetBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        resetBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        resetBtn.setPadding(40, 18, 40, 18);
+        resetBtn.setFocusable(true);
+        resetBtn.setFocusableInTouchMode(false);
+        resetBtn.setBackground(createFocusButtonBg(
+                Color.parseColor("#2A2A2A"),
+                Color.parseColor("#D32F2F"),
+                14
+        ));
+        resetBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                sizeSeek.setProgress(defaultSizeProgress);
+                speedSeek.setProgress(defaultSpeedProgress);
+                brightSeek.setProgress(defaultBrightProgress);
+            }
+        });
+
         final Button testBtn = new Button(this);
+        testBtn.setId(View.generateViewId());
         testBtn.setText("Тест скринсейвера");
         testBtn.setTextColor(Color.WHITE);
         testBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
@@ -273,7 +363,6 @@ public class PreviewActivity extends Activity {
                 Color.parseColor("#1E88E5"),
                 14
         ));
-
         testBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -281,11 +370,44 @@ public class PreviewActivity extends Activity {
             }
         });
 
-        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams resetLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        root.addView(testBtn, btnParams);
+        resetLp.rightMargin = 28;
+        bottomRow.addView(resetBtn, resetLp);
+
+        LinearLayout.LayoutParams testLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        bottomRow.addView(testBtn, testLp);
+
+        root.addView(bottomRow);
+
+        sizeMinus.setNextFocusRightId(sizePlus.getId());
+        sizeMinus.setNextFocusDownId(speedMinus.getId());
+        sizePlus.setNextFocusLeftId(sizeMinus.getId());
+        sizePlus.setNextFocusDownId(speedPlus.getId());
+
+        speedMinus.setNextFocusUpId(sizeMinus.getId());
+        speedMinus.setNextFocusRightId(speedPlus.getId());
+        speedMinus.setNextFocusDownId(brightMinus.getId());
+        speedPlus.setNextFocusUpId(sizePlus.getId());
+        speedPlus.setNextFocusLeftId(speedMinus.getId());
+        speedPlus.setNextFocusDownId(brightPlus.getId());
+
+        brightMinus.setNextFocusUpId(speedMinus.getId());
+        brightMinus.setNextFocusRightId(brightPlus.getId());
+        brightMinus.setNextFocusDownId(resetBtn.getId());
+        brightPlus.setNextFocusUpId(speedPlus.getId());
+        brightPlus.setNextFocusLeftId(brightMinus.getId());
+        brightPlus.setNextFocusDownId(testBtn.getId());
+
+        resetBtn.setNextFocusUpId(brightMinus.getId());
+        resetBtn.setNextFocusRightId(testBtn.getId());
+        testBtn.setNextFocusUpId(brightPlus.getId());
+        testBtn.setNextFocusLeftId(resetBtn.getId());
 
         scrollView.addView(root);
         setContentView(scrollView);
@@ -302,7 +424,7 @@ public class PreviewActivity extends Activity {
         return rowParams;
     }
 
-    private LinearLayout createControlRow(Button minusBtn, SeekBar seekBar, Button plusBtn) {
+    private LinearLayout createControlRow(Button minusBtn, View seekWrapper, Button plusBtn) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -317,7 +439,7 @@ public class PreviewActivity extends Activity {
         );
         seekLp.leftMargin = 16;
         seekLp.rightMargin = 16;
-        row.addView(seekBar, seekLp);
+        row.addView(seekWrapper, seekLp);
 
         row.addView(plusBtn, btnLp);
         return row;
